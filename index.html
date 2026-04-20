@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+  <meta name="theme-color" content="#7c3aed"/>
+  <meta name="description" content="AI-powered weekly meal planner with grocery lists organized by Meijer store sections."/>
+  <meta name="mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+  <meta name="apple-mobile-web-app-title" content="MealPlan"/>
+  <title>Weekly Meal Planner</title>
+  <link rel="manifest" href="./manifest.json"/>
+  <link rel="icon" href="./icons/icon-192.png"/>
+  <link rel="apple-touch-icon" href="./icons/icon-192.png"/>
+  <link rel="stylesheet" href="./style.css"/>
+</head>
+<body>
+<div id="app">
+
+  <!-- ===== HEADER ===== -->
+  <header>
+    <div class="header-inner">
+      <a class="logo" href="#">
+        <span class="logo-icon">🍽️</span>
+        <span>MealPlan</span>
+      </a>
+      <nav>
+        <button class="nav-btn active" data-view="planner" onclick="switchView('planner')">
+          <span class="icon">📅</span> Planner
+        </button>
+        <button class="nav-btn" data-view="grocery" onclick="switchView('grocery')">
+          <span class="icon">🛒</span> Grocery
+        </button>
+        <button class="nav-btn" data-view="recipes" onclick="switchView('recipes')">
+          <span class="icon">📖</span> Recipes
+        </button>
+        <button class="nav-btn" data-view="settings" onclick="switchView('settings')">
+          <span class="icon">⚙️</span> Settings
+        </button>
+      </nav>
+      <div class="header-actions">
+        <button class="icon-btn" onclick="printView()" title="Print">🖨️</button>
+        <button class="icon-btn" id="install-btn" onclick="installPWA()" title="Install app" style="display:none">📲</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- ===== MAIN ===== -->
+  <main>
+
+    <!-- ===== PLANNER VIEW ===== -->
+    <div id="view-planner" class="view active">
+      <div class="section-header">
+        <h1 class="section-title">This Week's Plan</h1>
+        <p class="section-sub">AI-generated meals tailored to your preferences</p>
+      </div>
+
+      <!-- AI Prompt Box -->
+      <div class="prompt-box">
+        <textarea id="ai-prompt-input" placeholder="Describe your week… e.g. 'light meals, one pasta night, something quick on Wednesday' — or leave blank to auto-generate" rows="2"></textarea>
+        <button class="btn btn-primary" onclick="handleAiPrompt()">✨ Generate</button>
+      </div>
+
+      <div class="action-bar">
+        <button class="btn btn-secondary btn-sm" onclick="generateGrocery()">🛒 Build Grocery List</button>
+        <button class="btn btn-ghost btn-sm" onclick="clearAll()">🗑️ Clear All</button>
+        <button class="btn btn-ghost btn-sm" onclick="printView()">🖨️ Print</button>
+      </div>
+
+      <!-- Loading state -->
+      <div id="planner-loading" class="ai-loading" style="display:none">
+        <div class="spinner"></div>
+        <p>Asking <strong>Gemini AI</strong>…</p>
+      </div>
+
+      <!-- Print title (hidden on screen) -->
+      <div class="print-title">Weekly Meal Plan</div>
+
+      <!-- Week Grid -->
+      <div id="week-grid" class="week-grid"></div>
+
+      <div class="card" style="margin-top:1rem">
+        <div class="card-title">💡 Tip</div>
+        <p style="font-size:.875rem;color:var(--text2)">Tap any day to edit meals manually. Tap a meal chip to load its recipe. Hit <strong>✨ Generate</strong> to let AI fill the week!</p>
+      </div>
+    </div>
+
+    <!-- ===== GROCERY VIEW ===== -->
+    <div id="view-grocery" class="view">
+      <div class="section-header" style="display:flex;align-items:flex-start;justify-content:space-between;gap:1rem">
+        <div>
+          <h2 class="section-title">Grocery List</h2>
+          <p class="section-sub" id="grocery-count">No items yet</p>
+        </div>
+        <div style="display:flex;gap:.5rem;flex-shrink:0">
+          <button class="btn btn-primary btn-sm" onclick="generateGrocery()">♻️ Rebuild</button>
+          <button class="btn btn-ghost btn-sm" onclick="printView()">🖨️ Print</button>
+        </div>
+      </div>
+
+      <!-- Loading -->
+      <div id="grocery-loading" class="ai-loading" style="display:none">
+        <div class="spinner"></div>
+        <p>Asking <strong>Gemini AI</strong>…</p>
+      </div>
+
+      <!-- Print title -->
+      <div class="print-title">Grocery List — Meijer</div>
+
+      <div id="grocery-list"></div>
+    </div>
+
+    <!-- ===== RECIPES VIEW ===== -->
+    <div id="view-recipes" class="view">
+      <div class="section-header">
+        <h2 class="section-title">Recipes</h2>
+        <p class="section-sub">Tap any meal on the planner to load its AI-generated recipe</p>
+      </div>
+
+      <!-- Loading -->
+      <div id="recipe-loading" class="ai-loading" style="display:none">
+        <div class="spinner"></div>
+        <p>Asking <strong>Gemini AI</strong>…</p>
+      </div>
+
+      <div id="recipes-list"></div>
+    </div>
+
+    <!-- ===== SETTINGS VIEW ===== -->
+    <div id="view-settings" class="view">
+      <div class="section-header">
+        <h2 class="section-title">Settings</h2>
+        <p class="section-sub">Customize your preferences and AI configuration</p>
+      </div>
+
+      <!-- API Key -->
+      <div class="card" style="margin-bottom:1rem">
+        <div class="card-title">🤖 AI Provider</div>
+
+        <div class="form-group">
+          <label for="provider-select">Choose your AI provider</label>
+          <select id="provider-select" onchange="onProviderChange()">
+            <option value="groq">Groq — Free &amp; Fast ⚡ (Recommended)</option>
+            <option value="openrouter">OpenRouter — Free models incl. Gemini Flash</option>
+            <option value="gemini">Google Gemini (if quota available)</option>
+          </select>
+        </div>
+
+        <p id="provider-hint-settings" style="font-size:.85rem;color:var(--text2);margin-bottom:.75rem"></p>
+
+        <div class="api-key-row">
+          <input type="text" id="api-key-input" placeholder="gsk_…" readonly
+            style="cursor:pointer;background:var(--bg3)" onclick="openModal('apikey-modal')"/>
+          <button class="btn btn-primary btn-sm" onclick="openModal('apikey-modal')">Set Key</button>
+          <button class="btn btn-danger btn-sm" onclick="clearApiKey()" title="Clear saved key">✕</button>
+        </div>
+      </div>
+
+      <!-- Preferences -->
+      <div class="card" style="margin-bottom:1rem">
+        <div class="card-title">🍴 Meal Preferences</div>
+
+        <div class="prefs-grid">
+          <div class="form-group">
+            <label for="pref-servings">Servings per meal</label>
+            <input type="number" id="pref-servings" min="1" max="20" value="4"/>
+          </div>
+          <div class="form-group">
+            <label for="pref-dietary">Dietary notes</label>
+            <input type="text" id="pref-dietary" placeholder="e.g. no shellfish, low-sodium…"/>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Go-to / Favorite Meals</label>
+          <p style="font-size:.8rem;color:var(--text3);margin-bottom:.4rem">AI will pull from these when generating plans</p>
+          <div id="gotos-tags" class="tag-list" style="margin-bottom:.5rem"></div>
+          <div style="display:flex;gap:.5rem">
+            <input type="text" id="goto-input" placeholder="Add a favorite meal…"/>
+            <button class="btn btn-secondary btn-sm" onclick="addTag('goto-input','goTos','gotos-tags')">Add</button>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Common Staples (Always on Grocery List)</label>
+          <p style="font-size:.8rem;color:var(--text3);margin-bottom:.4rem">Items like Milk, Butter, Cereal, etc.</p>
+          <div id="staples-tags" class="tag-list" style="margin-bottom:.5rem"></div>
+          <div style="display:flex;gap:.5rem">
+            <input type="text" id="staple-input" placeholder="Add a staple item…"/>
+            <button class="btn btn-secondary btn-sm" onclick="addTag('staple-input','staples','staples-tags')">Add</button>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Always Avoid</label>
+          <div id="avoid-tags" class="tag-list" style="margin-bottom:.5rem"></div>
+          <div style="display:flex;gap:.5rem">
+            <input type="text" id="avoid-input" placeholder="e.g. mushrooms, cilantro…"/>
+            <button class="btn btn-secondary btn-sm" onclick="addTag('avoid-input','avoid','avoid-tags')">Add</button>
+          </div>
+        </div>
+
+        <button class="btn btn-primary" onclick="savePrefs()" style="margin-top:.25rem">💾 Save Preferences</button>
+      </div>
+
+      <!-- About -->
+      <div class="card">
+        <div class="card-title">ℹ️ About</div>
+        <p style="font-size:.875rem;color:var(--text2);line-height:1.7">
+          <strong style="color:var(--text)">MealPlan</strong> runs entirely in your browser.
+          Your meals, recipes, and grocery lists are saved locally on this device.
+          AI features use your choice of provider (Groq, OpenRouter, or Gemini).
+          Works offline (PWA). Grocery list is optimized for <strong style="color:var(--text)">Meijer</strong> store sections.
+        </p>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- ===== BOTTOM NAV ===== -->
+  <nav class="bottom-nav">
+    <button class="bnav-btn active" data-view="planner" onclick="switchView('planner')">
+      <span class="bicon">📅</span>Plan
+    </button>
+    <button class="bnav-btn" data-view="grocery" onclick="switchView('grocery')">
+      <span class="bicon">🛒</span>Grocery
+    </button>
+    <button class="bnav-btn" data-view="recipes" onclick="switchView('recipes')">
+      <span class="bicon">📖</span>Recipes
+    </button>
+    <button class="bnav-btn" data-view="settings" onclick="switchView('settings')">
+      <span class="bicon">⚙️</span>Settings
+    </button>
+    <button class="bnav-btn" onclick="printView()">
+      <span class="bicon">🖨️</span>Print
+    </button>
+  </nav>
+
+  <!-- ===== TOAST ===== -->
+  <div id="toast"></div>
+
+  <!-- ===== MODAL: API KEY ===== -->
+  <div class="modal-overlay" id="apikey-modal" onclick="if(event.target===this)closeModal('apikey-modal')">
+    <div class="modal">
+      <div class="modal-title">🔑 Set API Key</div>
+      <p id="provider-hint-modal" style="font-size:.85rem;color:var(--text2);margin-bottom:1rem"></p>
+      <div class="form-group">
+        <label for="api-key-raw">Paste your key here</label>
+        <input type="password" id="api-key-raw" placeholder="Key…" autocomplete="off"/>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" onclick="closeModal('apikey-modal')">Cancel</button>
+        <button class="btn btn-primary" onclick="saveApiKey()">Save Key</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== MODAL: DAY EDITOR ===== -->
+  <div class="modal-overlay" id="day-modal" onclick="if(event.target===this)closeModal('day-modal')">
+    <div class="modal">
+      <div class="modal-title" id="day-modal-title">Edit Day</div>
+      <div class="form-group">
+        <label for="day-dinner">🌙 Dinner</label>
+        <input type="text" id="day-dinner" placeholder="e.g. Grilled chicken & veggies"/>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" onclick="closeModal('day-modal')">Cancel</button>
+        <button class="btn btn-danger btn-sm" onclick="clearDay()">Clear Day</button>
+        <button class="btn btn-primary" onclick="saveDayModal()">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== MODAL: RECIPE ===== -->
+  <div class="modal-overlay" id="recipe-modal" onclick="if(event.target===this)closeModal('recipe-modal')">
+    <div class="modal" style="max-height:88dvh">
+      <div id="recipe-modal-body"></div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" onclick="closeModal('recipe-modal')">Close</button>
+        <button class="btn btn-secondary btn-sm" onclick="switchView('recipes');closeModal('recipe-modal')">View All Recipes</button>
+      </div>
+    </div>
+  </div>
+
+</div><!-- #app -->
+<script src="./app.js"></script>
+<script>
+  // clearDay helper referenced in modal
+  function clearDay() {
+    const day = document.getElementById('day-modal').dataset.day;
+    if (state.plan[day]) delete state.plan[day];
+    save(); renderPlan(); closeModal('day-modal');
+  }
+</script>
+</body>
+</html>
