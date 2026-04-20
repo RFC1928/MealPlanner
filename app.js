@@ -347,7 +347,7 @@ ${ctx}
 ${customInstruction ? `Additional instruction: ${customInstruction}` : ''}
 
 Respond with JSON matching the schema exactly. Use short, recognizable meal names (max 5 words). 
-IMPORTANT: Only include the 'dinner' key for each day. Do NOT include breakfast or lunch.
+IMPORTANT: Wrap day names in double asterisks (e.g., "**Sunday**"). Only include the 'dinner' key for each day. Do NOT include breakfast or lunch.
 
   const schema = {
     type: 'object',
@@ -363,19 +363,22 @@ IMPORTANT: Only include the 'dinner' key for each day. Do NOT include breakfast 
 
   showLoading('planner-loading', 'Crafting your week\u2026');
   try {
-    let result = await callAI(prompt, schema);
-    console.log('AI Raw Result:', result);
+    const rawResult = await callAI(prompt, schema);
+    console.log('AI Raw Result:', rawResult);
     
-    // AI often wraps the object in a named key even when told not to
-    const wrappers = ['plan', 'meals', 'mealPlan', 'meal_plan', 'weekly_plan'];
-    for (const w of wrappers) {
-      if (result[w] && typeof result[w] === 'object') {
-        result = result[w];
-        break;
+    // Create a flattened map of everything in the response to find days easily
+    const flatResult = {};
+    function walk(obj) {
+      if (!obj || typeof obj !== 'object') return;
+      for (const [k, v] of Object.entries(obj)) {
+        // Strip ** from keys to find target days
+        const cleanK = k.replace(/\*\*/g, '');
+        flatResult[cleanK] = v;
+        if (typeof v === 'object') walk(v);
       }
     }
-    
-    // Support Sun, Sunday, Monday, etc.
+    walk(rawResult);
+
     let foundAny = false;
     DAYS.forEach(d => {
       const fullDay = {
@@ -383,23 +386,25 @@ IMPORTANT: Only include the 'dinner' key for each day. Do NOT include breakfast 
         'Thu': 'Thursday', 'Fri': 'Friday', 'Sat': 'Saturday'
       }[d];
       
-      // Try every possible key variation the AI might use
-      const dayData = result[d] || result[fullDay] || 
-                      result[d.toLowerCase()] || result[fullDay?.toLowerCase()] ||
-                      result[d.toUpperCase()] || result[fullDay?.toUpperCase()];
+      // Look for any key that matches this day (case-insensitive) in our flat map
+      const dayKey = Object.keys(flatResult).find(k => 
+        k.toLowerCase() === d.toLowerCase() || k.toLowerCase() === fullDay.toLowerCase()
+      );
 
-      if (dayData && typeof dayData === 'object' && dayData.dinner) {
-        state.plan[d] = { dinner: dayData.dinner };
-        foundAny = true;
-      } else if (typeof dayData === 'string') {
-        // AI sometimes just gives a string instead of { dinner: "..." }
-        state.plan[d] = { dinner: dayData };
-        foundAny = true;
+      if (dayKey) {
+        const val = flatResult[dayKey];
+        if (val && typeof val === 'object' && val.dinner) {
+          state.plan[d] = { dinner: val.dinner };
+          foundAny = true;
+        } else if (typeof val === 'string') {
+          state.plan[d] = { dinner: val };
+          foundAny = true;
+        }
       }
     });
     
     if (!foundAny) {
-      console.warn('Could not find day keys in AI response:', result);
+      console.warn('Could not find any days in AI response:', rawResult);
       throw new Error('AI response was formatted unexpectedly. Try again?');
     }
     
