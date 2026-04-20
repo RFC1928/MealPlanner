@@ -1,3 +1,56 @@
+// ===== GATEKEEPER (Privacy Lock) =====
+const HOME_IP = '73.144.43.202';
+const SECRET_PIN = '7878';
+
+async function initGatekeeper() {
+  const gate = document.getElementById('gatekeeper');
+  const pinArea = document.getElementById('pin-area');
+  const subText = gate.querySelector('.lock-sub');
+
+  // 1. Check if already unlocked this session
+  if (sessionStorage.getItem('mealplan_unlocked') === 'true') {
+    gate.style.display = 'none';
+    return;
+  }
+
+  try {
+    // 2. Attempt IP verification
+    const res = await fetch('https://api.ipify.org?format=json');
+    const data = await res.json();
+    if (data.ip === HOME_IP) {
+      unlockGate();
+      return;
+    }
+  } catch (e) {
+    console.warn('IP check failed, falling back to PIN');
+  }
+
+  // 3. Show PIN prompt if IP check fails or isn't home
+  subText.textContent = 'Verification required for public access.';
+  pinArea.style.display = 'block';
+  document.getElementById('gate-pin').focus();
+}
+
+function checkPin() {
+  const input = document.getElementById('gate-pin').value;
+  if (input === SECRET_PIN) {
+    unlockGate();
+    sessionStorage.setItem('mealplan_unlocked', 'true');
+  } else {
+    showToast('Invalid PIN', 'error');
+    document.getElementById('gate-pin').value = '';
+  }
+}
+
+function unlockGate() {
+  const gate = document.getElementById('gatekeeper');
+  gate.style.opacity = '0';
+  setTimeout(() => { gate.style.display = 'none'; }, 300);
+}
+
+// Start gatekeeper immediately
+initGatekeeper();
+
 // ===== STATE =====
 const state = {
   apiKey: '',

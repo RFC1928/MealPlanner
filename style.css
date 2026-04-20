@@ -30,6 +30,47 @@
 
 html { scroll-behavior: smooth; }
 
+/* ===== GATEKEEPER LOCK SCREEN ===== */
+#gatekeeper {
+  position: fixed;
+  inset: 0;
+  background: var(--bg);
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  text-align: center;
+}
+.lock-icon { font-size: 3rem; margin-bottom: 1.5rem; }
+.lock-title { font-family: 'Fraunces', serif; font-size: 1.5rem; margin-bottom: 0.5rem; }
+.lock-sub { color: var(--text2); font-size: 0.9rem; margin-bottom: 2rem; }
+.pin-input {
+  background: var(--bg3);
+  border: 2px solid var(--bg3);
+  color: var(--text);
+  font-size: 1.5rem;
+  padding: 0.75rem;
+  border-radius: 0.75rem;
+  width: 140px;
+  text-align: center;
+  letter-spacing: 0.5rem;
+  margin-bottom: 1rem;
+  outline: none;
+  transition: border-color 0.2s;
+}
+.pin-input:focus { border-color: var(--purple); }
+.gatekeeper-btn {
+  background: var(--purple);
+  color: white;
+  border: none;
+  padding: 0.75rem 1.5rem;
+  border-radius: 0.5rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
 body {
   font-family: 'Inter', system-ui, sans-serif;
   background: var(--bg);

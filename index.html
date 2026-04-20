@@ -16,6 +16,16 @@
   <link rel="stylesheet" href="./style.css"/>
 </head>
 <body>
+  <div id="gatekeeper">
+    <div class="lock-icon">🔒</div>
+    <h2 class="lock-title">MealPlan Private</h2>
+    <p class="lock-sub">Verifying access...</p>
+    <div id="pin-area" style="display:none">
+      <input type="password" id="gate-pin" class="pin-input" maxlength="4" placeholder="••••" inputmode="numeric"/>
+      <br/>
+      <button class="gatekeeper-btn" onclick="checkPin()">Unlock</button>
+    </div>
+  </div>
 <div id="app">
 
   <!-- ===== HEADER ===== -->
