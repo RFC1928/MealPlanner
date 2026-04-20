@@ -58,6 +58,7 @@ const state = {
   plan: {}, // { "Mon": { breakfast: "...", lunch: "...", dinner: "..." }, ... }
   grocery: [], // [{ section, name, qty, checked }]
   recipes: {}, // { mealName: { ... } }
+  lastPlan: {}, // Archived previous week
   prefs: {
     goTos: [],
     staples: [],
@@ -89,20 +90,10 @@ const PROVIDERS = {
     defaultModel: 'meta-llama/llama-4-scout:free',
     type: 'openai-compat',
     baseUrl: 'https://openrouter.ai/api/v1'
-  },
-  gemini: {
-    label: 'Google Gemini',
-    placeholder: 'AIza…',
-    signupUrl: 'https://aistudio.google.com/apikey',
-    signupLabel: 'aistudio.google.com',
-    models: ['gemini-2.0-flash', 'gemini-1.5-flash'],
-    defaultModel: 'gemini-2.0-flash',
-    type: 'gemini',
-    baseUrl: 'https://generativelanguage.googleapis.com/v1beta/models'
   }
 };
 
-const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const DAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
 const MEAL_TYPES = ['dinner'];
 
 const MEIJER_SECTIONS = [
@@ -173,6 +164,7 @@ function save() {
     plan: state.plan,
     grocery: state.grocery,
     recipes: state.recipes,
+    lastPlan: state.lastPlan,
     prefs: state.prefs
   }));
 }
@@ -185,6 +177,7 @@ function load() {
       Object.assign(state.plan, saved.plan || {});
       state.grocery = saved.grocery || [];
       state.recipes = saved.recipes || {};
+      state.lastPlan = saved.lastPlan || {};
       Object.assign(state.prefs, saved.prefs || {});
     } catch(e) {}
   }
@@ -192,22 +185,31 @@ function load() {
   if (prov && PROVIDERS[prov]) state.provider = prov;
 
   const key = localStorage.getItem('mealplanner_apikey');
-  if (key) {
-    // Guard against key/provider mismatch (e.g. old Gemini key with new Groq provider)
-    const isGeminiKey = key.startsWith('AIza');
-    const isGeminiProvider = state.provider === 'gemini';
-    if (isGeminiKey !== isGeminiProvider) {
-      // Clear the mismatched key — user will be prompted to re-enter
-      localStorage.removeItem('mealplanner_apikey');
-      console.warn('MealPlan: Cleared mismatched API key (wrong key type for selected provider)');
-    } else {
-      state.apiKey = key;
-    }
-  }
+  if (key) state.apiKey = key;
 
   if (state.prefs.goTos.length === 0) state.prefs.goTos = [...DEFAULT_GOTOS];
   if (!state.prefs.staples || state.prefs.staples.length === 0) state.prefs.staples = [...DEFAULT_STAPLES];
 }
+
+function resetApp() {
+  if (confirm('Permanently delete all plans, preferences, and API keys?')) {
+    localStorage.clear();
+    location.reload();
+  }
+}
+
+// ===== HELPERS =====
+function ensureString(val) {
+  if (!val) return '';
+  if (typeof val === 'string') return val;
+  if (typeof val === 'object') {
+    return val.name || val.item || val.text || val.instruction || Object.values(val).filter(v=>typeof v==='string')[0] || JSON.stringify(val);
+  }
+  return String(val);
+}
+
+function escHtml(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function truncate(s, n) { return s.length > n ? s.slice(0, n-1) + '\u2026' : s; }
 
 // ===== UNIFIED AI CALL =====
 function providerName() {
@@ -222,42 +224,7 @@ async function callAI(prompt, jsonHint = null) {
   const prov = PROVIDERS[state.provider];
   if (!prov) throw new Error('Unknown provider');
 
-  if (prov.type === 'gemini') {
-    return callGeminiNative(prompt, jsonHint, prov);
-  } else {
-    return callOpenAICompat(prompt, jsonHint, prov);
-  }
-}
-
-// Gemini native API (supports structured responseSchema)
-async function callGeminiNative(prompt, jsonHint, prov) {
-  const model = prov.defaultModel;
-  const body = {
-    contents: [{ role: 'user', parts: [{ text: prompt }] }],
-    generationConfig: {
-      temperature: 0.8,
-      maxOutputTokens: 8192,
-      ...(jsonHint ? { responseMimeType: 'application/json', responseSchema: jsonHint } : {})
-    }
-  };
-  const res = await fetch(
-    `${prov.baseUrl}/${model}:generateContent?key=${state.apiKey}`,
-    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
-  );
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error?.message || `Gemini error ${res.status}`);
-  }
-  const data = await res.json();
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-  if (jsonHint) {
-    try {
-      return JSON.parse(cleanJson(text));
-    } catch(e) {
-      throw new Error('Invalid JSON from Gemini — please try again');
-    }
-  }
-  return text;
+  return callOpenAICompat(prompt, jsonHint, prov);
 }
 
 // OpenAI-compatible API (Groq, OpenRouter) — uses JSON mode
@@ -329,10 +296,13 @@ function buildPrefsContext() {
     'Bread/garlic bread', 'Fruit sides for kids', 'Cucumber + tzatziki'
   ].join(', ');
 
+  const lastMeals = Object.values(state.lastPlan).map(v => v.dinner).filter(Boolean);
+  const avoidList = [...state.prefs.avoid, ...lastMeals];
+
   return [
     state.prefs.goTos.length   ? `Favorite/go-to meals (Prioritize these): ${state.prefs.goTos.join(', ')}` : '',
     `Common sides we use (Pair these with meals where appropriate): ${commonSides}`,
-    state.prefs.avoid.length   ? `Avoid: ${state.prefs.avoid.join(', ')}` : '',
+    avoidList.length           ? `Avoid these (recently eaten or user-specified): ${avoidList.join(', ')}` : '',
     state.prefs.dietaryNotes   ? `Dietary notes: ${state.prefs.dietaryNotes}` : '',
     `Servings per meal: ${state.prefs.servings}`
   ].filter(Boolean).join('\n');
@@ -340,14 +310,21 @@ function buildPrefsContext() {
 
 // ===== GENERATE WEEK PLAN =====
 async function generateWeekPlan(customInstruction = '') {
+  // Archive current plan to lastPlan before generating new one
+  if (Object.keys(state.plan).length > 0) {
+    state.lastPlan = JSON.parse(JSON.stringify(state.plan));
+    save();
+  }
+
   const ctx = buildPrefsContext();
-  const prompt = `You are a helpful meal planning assistant. Generate a full 7-day meal plan (Sunday through Saturday).
+  const prompt = `You are a helpful meal planning assistant. Generate a full 7-day meal plan starting on MONDAY and ending on SUNDAY.
 User preferences:
 ${ctx}
 ${customInstruction ? `Additional instruction: ${customInstruction}` : ''}
 
 Respond with JSON matching the schema exactly. Use short, recognizable meal names (max 5 words). 
-IMPORTANT: Wrap day names in double asterisks (e.g., "**Sunday**"). Only include the 'dinner' key for each day. Do NOT include breakfast or lunch.
+Format example: {"Mon": {"dinner": "Steak & Potatoes"}, "Tue": {"dinner": "Tacos"}, ...}
+IMPORTANT: Only include the 'dinner' key for each day. Do NOT include breakfast or lunch.`;
 
   const schema = {
     type: 'object',
@@ -371,10 +348,8 @@ IMPORTANT: Wrap day names in double asterisks (e.g., "**Sunday**"). Only include
     function walk(obj) {
       if (!obj || typeof obj !== 'object') return;
       for (const [k, v] of Object.entries(obj)) {
-        // Strip ** from keys to find target days
-        const cleanK = k.replace(/\*\*/g, '');
-        flatResult[cleanK] = v;
-        if (typeof v === 'object') walk(v);
+        flatResult[k] = v;
+        if (v && typeof v === 'object' && !Array.isArray(v)) walk(v);
       }
     }
     walk(rawResult);
@@ -393,11 +368,22 @@ IMPORTANT: Wrap day names in double asterisks (e.g., "**Sunday**"). Only include
 
       if (dayKey) {
         const val = flatResult[dayKey];
-        if (val && typeof val === 'object' && val.dinner) {
-          state.plan[d] = { dinner: val.dinner };
-          foundAny = true;
-        } else if (typeof val === 'string') {
-          state.plan[d] = { dinner: val };
+        let mealText = '';
+
+        if (typeof val === 'string') {
+          mealText = val;
+        } else if (val && typeof val === 'object') {
+          // If the day is an object, look for dinner/meal/name inside it
+          const innerVal = val.dinner || val.meal || val.name || Object.values(val)[0];
+          if (typeof innerVal === 'object') {
+            mealText = innerVal.name || innerVal.title || Object.values(innerVal)[0];
+          } else {
+            mealText = innerVal;
+          }
+        }
+        
+        if (mealText) {
+          state.plan[d] = { dinner: String(mealText).trim() };
           foundAny = true;
         }
       }
@@ -428,14 +414,15 @@ async function generateGrocery() {
   if (meals.length === 0) { showToast('Generate a meal plan first', 'error'); return; }
 
   const sectionIds = MEIJER_SECTIONS.map(s => s.id);
-  const prompt = `Create a consolidated grocery list for these meals: ${meals.join(', ')}.
+  const prompt = `Create a consolidated grocery list for ALL of these meals: ${meals.join(', ')}.
+IMPORTANT: You must include ingredients for every single meal listed above. Do not skip any.
 Servings per meal: ${state.prefs.servings}.
 ${state.prefs.dietaryNotes ? `Dietary notes: ${state.prefs.dietaryNotes}` : ''}
 
 Organize items by these Meijer store sections (use exact IDs): ${sectionIds.join(', ')}.
 Consolidate duplicate ingredients. Use practical quantities (e.g. "2 lbs", "1 bunch", "1 can").
 
-Return JSON array of items.`;
+Return JSON array of items. Each item must have "section" (one of: ${sectionIds.join(', ')}), "name", and "qty".`;
 
   const schema = {
     type: 'array',
@@ -459,8 +446,8 @@ Return JSON array of items.`;
     
     // Add staples if not already present
     state.prefs.staples.forEach(staple => {
-      const lower = staple.toLowerCase();
-      if (!finalItems.some(i => i.name.toLowerCase().includes(lower))) {
+      const lower = String(staple).toLowerCase();
+      if (!finalItems.some(i => i.name && String(i.name).toLowerCase().includes(lower))) {
         finalItems.push({ section: 'other', name: staple, qty: '1', checked: false });
       }
     });
@@ -525,8 +512,8 @@ function renderPlan() {
     const day = state.plan[d] || {};
     const hasMeal = Object.values(day).some(Boolean);
     const chips = MEAL_TYPES.map(t =>
-      day[t] ? `<div class="meal-chip ${t}" title="${day[t]}" onclick="generateRecipe('${escHtml(day[t])}')">
-        ${escHtml(truncate(day[t], 18))}
+      day[t] ? `<div class="meal-chip ${t}" title="${day[t]}">
+        ${escHtml(day[t])}
       </div>` : ''
     ).join('');
     return `<div class="day-card ${hasMeal ? 'has-meal' : ''}" onclick="openDayModal('${d}')">
@@ -534,6 +521,7 @@ function renderPlan() {
       <div class="day-meals">${chips || '<div class="day-add">+ add</div>'}</div>
     </div>`;
   }).join('');
+  updatePrintView();
 }
 
 // ===== RENDER GROCERY =====
@@ -551,30 +539,36 @@ function renderGrocery() {
 
   const bySection = {};
   state.grocery.forEach((item, idx) => {
-    if (!bySection[item.section]) bySection[item.section] = [];
-    bySection[item.section].push({ ...item, idx });
+    // Fallback to 'other' if section is unknown
+    const secId = MEIJER_SECTIONS.find(s => s.id === item.section) ? item.section : 'other';
+    if (!bySection[secId]) bySection[secId] = [];
+    bySection[secId].push({ ...item, idx });
   });
 
   const uncheckedCount = state.grocery.filter(i => !i.checked).length;
   document.getElementById('grocery-count').textContent = `${uncheckedCount} item${uncheckedCount !== 1 ? 's' : ''} remaining`;
 
   container.innerHTML = MEIJER_SECTIONS
-    .filter(s => bySection[s.id])
-    .map(s => `
-      <div class="grocery-section">
-        <div class="grocery-section-header">
-          <span class="section-icon">${s.icon}</span>${s.label}
-          <span style="margin-left:auto;font-size:0.75rem;opacity:0.6">${bySection[s.id].length}</span>
-        </div>
-        <div class="grocery-items">
-          ${bySection[s.id].map(item => `
-            <div class="grocery-item ${item.checked ? 'checked' : ''}" id="gitem-${item.idx}">
-              <div class="grocery-check ${item.checked ? 'done' : ''}" onclick="toggleGrocery(${item.idx})"></div>
-              <span class="item-name">${escHtml(item.name)}</span>
-              <span class="item-qty">${escHtml(item.qty)}</span>
-            </div>`).join('')}
-        </div>
-      </div>`).join('');
+    .map(s => {
+      const items = bySection[s.id] || [];
+      if (items.length === 0) return '';
+      return `
+        <div class="grocery-section">
+          <div class="grocery-section-header">
+            <span class="section-icon">${s.icon}</span>${s.label}
+            <span style="margin-left:auto;font-size:0.75rem;opacity:0.6">${items.length}</span>
+          </div>
+          <div class="grocery-items">
+            ${items.map(item => `
+              <div class="grocery-item ${item.checked ? 'checked' : ''}" id="gitem-${item.idx}">
+                <div class="grocery-check ${item.checked ? 'done' : ''}" onclick="toggleGrocery(${item.idx})"></div>
+                <span class="item-name">${escHtml(ensureString(item.name))}</span>
+                <span class="item-qty">${escHtml(ensureString(item.qty))}</span>
+              </div>`).join('')}
+          </div>
+        </div>`;
+    }).join('');
+  updatePrintView();
 }
 
 // ===== GROCERY TOGGLE =====
@@ -599,25 +593,26 @@ function renderRecipesView() {
   }
   container.innerHTML = keys.map(name => {
     const r = state.recipes[name];
+    const emoji = ensureString(r.emoji) || '🍽️';
     return `<div class="recipe-card">
       <div class="recipe-header">
-        <div class="recipe-icon">${r.emoji || '🍽️'}</div>
+        <div class="recipe-icon">${emoji}</div>
         <div>
-          <div class="recipe-title">${escHtml(r.name || name)}</div>
-          <div class="recipe-meta">${[r.prepTime && `Prep: ${r.prepTime}`, r.cookTime && `Cook: ${r.cookTime}`, r.servings && `Serves: ${r.servings}`].filter(Boolean).join(' · ')}</div>
+          <div class="recipe-title">${escHtml(ensureString(r.name || name))}</div>
+          <div class="recipe-meta">${[r.prepTime && `Prep: ${ensureString(r.prepTime)}`, r.cookTime && `Cook: ${ensureString(r.cookTime)}`, r.servings && `Serves: ${ensureString(r.servings)}`].filter(Boolean).join(' \u00B7 ')}</div>
         </div>
       </div>
       <div class="recipe-body">
-        ${r.description ? `<p style="color:var(--text2);font-size:.875rem;margin-bottom:.75rem">${escHtml(r.description)}</p>` : ''}
+        ${r.description ? `<p style="color:var(--text2);font-size:.875rem;margin-bottom:.75rem">${escHtml(ensureString(r.description))}</p>` : ''}
         <div class="recipe-section">
           <h4>Ingredients</h4>
-          <ul>${(r.ingredients||[]).map(i => `<li>${escHtml(i)}</li>`).join('')}</ul>
+          <ul>${(r.ingredients||[]).map(i => `<li>${escHtml(ensureString(i))}</li>`).join('')}</ul>
         </div>
         <div class="recipe-section">
           <h4>Instructions</h4>
-          <ol>${(r.instructions||[]).map(s => `<li>${escHtml(s)}</li>`).join('')}</ol>
+          <ol>${(r.instructions||[]).map(s => `<li>${escHtml(ensureString(s))}</li>`).join('')}</ol>
         </div>
-        ${r.tips ? `<div class="recipe-section"><h4>Tips</h4><p>${escHtml(r.tips)}</p></div>` : ''}
+        ${r.tips ? `<div class="recipe-section"><h4>Tips</h4><p>${escHtml(ensureString(r.tips))}</p></div>` : ''}
       </div>
     </div>`;
   }).join('');
@@ -628,31 +623,47 @@ function showRecipeModal(mealName) {
   const r = state.recipes[mealName];
   if (!r) return;
   const el = document.getElementById('recipe-modal-body');
+  
+  const toString = ensureString; // Use the global helper
+
   el.innerHTML = `
     <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:.75rem">
-      <span style="font-size:2rem">${r.emoji || '🍽️'}</span>
+      <span style="font-size:2rem">${toString(r.emoji) || '🍽️'}</span>
       <div>
-        <div class="recipe-title" style="font-family:'Fraunces',serif;font-size:1.15rem;font-weight:700">${escHtml(r.name||mealName)}</div>
-        <div class="recipe-meta" style="font-size:.8rem;color:var(--text2)">${[r.prepTime&&`Prep: ${r.prepTime}`,r.cookTime&&`Cook: ${r.cookTime}`,r.servings&&`Serves: ${r.servings}`].filter(Boolean).join(' · ')}</div>
+        <div class="recipe-title" style="font-family:'Fraunces',serif;font-size:1.15rem;font-weight:700">${escHtml(toString(r.name||mealName))}</div>
+        <div class="recipe-meta" style="font-size:.8rem;color:var(--text2)">${[r.prepTime&&`Prep: ${toString(r.prepTime)}`,r.cookTime&&`Cook: ${toString(r.cookTime)}`,r.servings&&`Serves: ${toString(r.servings)}`].filter(Boolean).join(' \u00B7 ')}</div>
       </div>
     </div>
-    ${r.description?`<p style="color:var(--text2);font-size:.875rem;margin-bottom:.75rem">${escHtml(r.description)}</p>`:''}
-    <div class="recipe-section"><h4>Ingredients</h4><ul>${(r.ingredients||[]).map(i=>`<li>${escHtml(i)}</li>`).join('')}</ul></div>
-    <div class="recipe-section"><h4>Instructions</h4><ol>${(r.instructions||[]).map(s=>`<li>${escHtml(s)}</li>`).join('')}</ol></div>
-    ${r.tips?`<div class="recipe-section"><h4>Tips</h4><p>${escHtml(r.tips)}</p></div>`:''}`;
+    ${r.description?`<p style="color:var(--text2);font-size:.875rem;margin-bottom:.75rem">${escHtml(toString(r.description))}</p>`:''}
+    <div class="recipe-section"><h4>Ingredients</h4><ul>${(r.ingredients||[]).map(i=>`<li>${escHtml(toString(i))}</li>`).join('')}</ul></div>
+    <div class="recipe-section"><h4>Instructions</h4><ol>${(r.instructions||[]).map(s=>`<li>${escHtml(toString(s))}</li>`).join('')}</ol></div>
+    ${r.tips?`<div class="recipe-section"><h4>Tips</h4><p>${escHtml(toString(r.tips))}</p></div>`:''}`;
   openModal('recipe-modal');
 }
 
 // ===== DAY MODAL =====
 function openDayModal(day) {
   const d = state.plan[day] || {};
-  document.getElementById('day-modal-title').textContent = `${day}'s Meals`;
-  MEAL_TYPES.forEach(t => {
-    const el = document.getElementById(`day-${t}`);
-    if (el) el.value = d[t] || '';
-  });
+  document.getElementById('day-modal-title').textContent = `${day}'s Dinner`;
+  
+  const dinnerInput = document.getElementById('day-dinner');
+  dinnerInput.value = d.dinner || '';
+  
+  // Show/hide recipe button based on if a meal exists
+  const recipeBtn = document.getElementById('btn-show-recipe');
+  recipeBtn.style.display = d.dinner ? 'inline-flex' : 'none';
+
   document.getElementById('day-modal').dataset.day = day;
   openModal('day-modal');
+}
+
+function viewRecipeFromModal() {
+  const day = document.getElementById('day-modal').dataset.day;
+  const mealName = state.plan[day]?.dinner;
+  if (mealName) {
+    closeModal('day-modal');
+    generateRecipe(mealName);
+  }
 }
 
 function saveDayModal() {
@@ -879,3 +890,57 @@ document.addEventListener('DOMContentLoaded', () => {
     if (e.key === 'Enter') { e.preventDefault(); addTag('avoid-input','avoid','avoid-tags'); }
   });
 });
+
+// ===== UPDATE DEDICATED PRINT VIEW =====
+function updatePrintView() {
+  const el = document.getElementById('print-view');
+  if (!el) return;
+
+  // Determine what to print based on current view
+  const activeView = document.querySelector('.view.active')?.id;
+  const isGrocery = activeView === 'view-grocery';
+  
+  let html = '';
+
+  if (isGrocery) {
+    html = `<div class="pv-title">Grocery List — Meijer</div>`;
+    if (state.grocery.length > 0) {
+      // Group by section for print
+      const grouped = {};
+      state.grocery.forEach(item => {
+        const secId = MEIJER_SECTIONS.find(s => s.id === item.section) ? item.section : 'other';
+        if (!grouped[secId]) grouped[secId] = [];
+        grouped[secId].push(item);
+      });
+
+      MEIJER_SECTIONS.forEach(s => {
+        const items = grouped[s.id] || [];
+        if (items.length === 0) return;
+        html += `<div class="pv-section-title" style="margin-top:20pt">${s.icon} ${s.label}</div>`;
+        items.forEach(item => {
+          html += `
+            <div class="pv-grocery-item">
+              <div class="pv-check"></div>
+              <div class="pv-item-name">${escHtml(ensureString(item.name))}</div>
+              <div class="pv-item-qty">${escHtml(ensureString(item.qty))}</div>
+            </div>`;
+        });
+      });
+    } else {
+      html += `<p style="text-align:center;margin-top:2cm">No items in grocery list.</p>`;
+    }
+  } else {
+    // Default: Weekly Plan
+    html = `<div class="pv-title">Weekly Menu</div>`;
+    DAYS.forEach(d => {
+      const meal = state.plan[d]?.dinner || '(No meal planned)';
+      html += `
+        <div class="pv-row">
+          <div class="pv-day">${d}</div>
+          <div class="pv-meal">${escHtml(meal)}</div>
+        </div>`;
+    });
+  }
+
+  el.innerHTML = html;
+}

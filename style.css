@@ -174,25 +174,28 @@ main { flex: 1; max-width: 900px; margin: 0 auto; width: 100%; padding: 1.5rem 1
 .day-card {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 0.75rem 0.5rem;
+  border-radius: var(--radius);
+  padding: 1rem;
   cursor: pointer;
   transition: all 0.2s;
-  min-height: 90px;
-  display: flex; flex-direction: column; gap: 0.35rem;
+  min-height: 120px;
+  display: flex; flex-direction: column; gap: 0.75rem;
 }
 .day-card:hover { border-color: var(--purple); box-shadow: 0 0 0 1px var(--purple); transform: translateY(-1px); }
 .day-card.has-meal { border-color: rgba(124,58,237,0.4); }
 .day-name { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text3); }
 .day-meals { display: flex; flex-direction: column; gap: 0.25rem; flex: 1; }
 .meal-chip {
-  font-size: 0.72rem; padding: 0.2rem 0.4rem; border-radius: 4px;
-  font-weight: 500; line-height: 1.3;
+  font-size: 0.95rem; padding: 0.5rem 0.75rem; border-radius: 10px;
+  font-weight: 500; line-height: 1.4;
+  white-space: normal; 
+  overflow-wrap: break-word;
+  word-break: normal;
 }
-.meal-chip.breakfast { background: rgba(245,158,11,0.15); color: var(--amber); }
-.meal-chip.lunch    { background: rgba(34,197,94,0.15);  color: var(--green); }
-.meal-chip.dinner   { background: rgba(124,58,237,0.15); color: var(--purple2); }
-.day-add { font-size: 0.75rem; color: var(--text3); text-align: center; margin-top: auto; }
+.meal-chip.breakfast { background: rgba(245,158,11,0.1); color: var(--amber); }
+.meal-chip.lunch    { background: rgba(34,197,94,0.1);  color: var(--green); }
+.meal-chip.dinner   { background: rgba(124,58,237,0.1); color: var(--purple2); border: 1px solid rgba(124,58,237,0.2); }
+.day-add { font-size: 0.8rem; color: var(--text3); text-align: center; margin-top: 0.5rem; opacity: 0.6; }
 
 /* ===== ACTION BAR ===== */
 .action-bar { display: flex; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 1.5rem; }
@@ -409,52 +412,45 @@ select option { background: var(--bg3); }
 .badge-amber  { background: rgba(245,158,11,0.15); color: var(--amber); }
 
 /* ===== RESPONSIVE ===== */
-@media (max-width: 700px) {
+@media (max-width: 800px) {
   nav { display: none; }
   .bottom-nav { display: grid; }
   main { padding-bottom: 7rem; }
-  .week-grid { grid-template-columns: repeat(4, 1fr); }
+  .week-grid { grid-template-columns: 1fr; gap: 1rem; }
+  .day-card { min-height: auto; flex-direction: row; align-items: center; justify-content: space-between; }
+  .day-name { width: 80px; font-size: 0.85rem; }
+  .day-meals { margin-top: 0; }
   .prefs-grid { grid-template-columns: 1fr; }
   .section-title { font-size: 1.35rem; }
 }
-@media (max-width: 420px) {
-  .week-grid { grid-template-columns: repeat(2, 1fr); }
-}
 
-/* ===== PRINT STYLESHEET ===== */
-@media print {
-  @page { margin: 1.5cm 2cm; size: letter; }
-  *, *::before, *::after { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  /* ===== NUCLEAR PRINT RESET (Dedicated Page) ===== */
+  @media print {
+    @page { margin: 1.5cm; size: letter; }
+    
+    /* Hide everything on the main app */
+    body { background: #fff !important; color: #000 !important; font-family: 'Fraunces', serif !important; }
+    header, nav, main > *:not(#print-view), .modal-overlay, #toast { display: none !important; }
+    
+    /* Show only the dedicated print view */
+    #print-view { 
+      display: block !important; 
+      visibility: visible !important;
+      position: absolute; left: 0; top: 0; width: 100%;
+    }
 
-  body { background: white !important; color: #111 !important; font-size: 11pt; }
-  header, .bottom-nav, .action-bar, .icon-btn, .btn, #toast, .modal-overlay { display: none !important; }
-  main { max-width: 100% !important; padding: 0 !important; margin: 0 !important; }
+    .pv-title { text-align: center; font-size: 32pt; font-weight: 800; margin-bottom: 30pt; border-bottom: 3pt solid #000; padding-bottom: 10pt; }
+    .pv-section-title { font-size: 20pt; font-weight: 700; margin: 30pt 0 15pt 0; border-bottom: 1pt solid #ddd; }
+    
+    /* Menu Row */
+    .pv-row { display: flex; border-bottom: 1pt solid #eee; padding: 15pt 0; break-inside: avoid; align-items: flex-start; }
+    .pv-day { width: 120pt; font-size: 14pt; font-weight: 700; text-transform: uppercase; color: #444; }
+    .pv-meal { flex: 1; font-size: 18pt; font-weight: 500; color: #000; }
 
-  .view { display: block !important; }
-  .view:not(.active) { display: none !important; }
-
-  /* Print: week grid */
-  .print-title { display: block !important; font-family: Georgia, serif; font-size: 18pt; font-weight: bold; margin-bottom: 0.75cm; color: #333; border-bottom: 2pt solid #7c3aed; padding-bottom: 0.3cm; }
-  .week-grid { grid-template-columns: repeat(7, 1fr) !important; gap: 4px !important; break-inside: avoid; }
-  .day-card {
-    background: #f9f7ff !important; border: 1pt solid #ccc !important;
-    border-radius: 4px !important; padding: 6px !important;
-    page-break-inside: avoid;
+    /* Grocery Row */
+    .pv-grocery-item { display: flex; align-items: center; gap: 10pt; padding: 6pt 0; border-bottom: 0.5pt solid #eee; }
+    .pv-check { width: 15pt; height: 15pt; border: 1.5pt solid #000; }
+    .pv-item-name { font-size: 13pt; font-weight: 500; }
+    .pv-item-qty { font-size: 12pt; font-style: italic; color: #333; margin-left: auto; }
   }
-  .day-name { color: #555 !important; font-size: 7pt; }
-  .meal-chip { font-size: 7pt !important; padding: 1px 3px !important; border-radius: 2px !important; }
-  .meal-chip.breakfast { background: #fef3c7 !important; color: #92400e !important; }
-  .meal-chip.lunch    { background: #dcfce7 !important; color: #166534 !important; }
-  .meal-chip.dinner   { background: #ede9fe !important; color: #5b21b6 !important; }
-
-  /* Print: grocery */
-  .grocery-section { break-inside: avoid; margin-bottom: 12px; }
-  .grocery-section-header { background: #ede9fe !important; color: #4c1d95 !important; padding: 4px 8px !important; font-size: 9pt !important; }
-  .grocery-item { background: white !important; border: 0.5pt solid #ddd !important; padding: 4px 8px !important; }
-  .grocery-check { border: 1pt solid #999 !important; background: white !important; }
-  .grocery-check.done { background: white !important; border-color: #999 !important; }
-  .grocery-check.done::after { display: none; }
-  .item-name { font-size: 9.5pt !important; }
-  .item-qty { font-size: 8.5pt !important; }
-}
-.print-title { display: none; }
+  #print-view { display: none; }
