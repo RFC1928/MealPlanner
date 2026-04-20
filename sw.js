@@ -37,12 +37,17 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
-  // Always go network for Gemini API
-  if (url.hostname.includes('googleapis.com') || url.hostname.includes('generativelanguage')) {
-    return; // Let it fall through to network
-  }
+  // 1. Skip caching for non-GET requests (AI calls are POST)
+  if (event.request.method !== 'GET') return;
 
-  // Cache-first for static assets
+  // 2. Skip caching for AI API domains
+  const isAiApi = url.hostname.includes('googleapis.com') || 
+                  url.hostname.includes('groq.com') || 
+                  url.hostname.includes('openrouter.ai');
+  
+  if (isAiApi) return;
+
+  // 3. Cache-first for static assets
   event.respondWith(
     caches.match(event.request).then((cached) => {
       if (cached) return cached;

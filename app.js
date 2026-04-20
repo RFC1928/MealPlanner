@@ -309,10 +309,15 @@ Respond with JSON matching the schema exactly. Use short, recognizable meal name
 
   showLoading('planner-loading', 'Crafting your week\u2026');
   try {
-    const result = await callAI(prompt, schema);
-    console.log('AI Plan Result:', result);
+    let result = await callAI(prompt, schema);
+    console.log('AI Raw Result:', result);
+    
+    // If AI wrapped it in { plan: { ... } } or { meals: { ... } }
+    if (result.plan && typeof result.plan === 'object') result = result.plan;
+    else if (result.meals && typeof result.meals === 'object') result = result.meals;
     
     // Support both 'Sun' and 'Sunday' styles
+    let foundAny = false;
     DAYS.forEach(d => {
       const fullDay = {
         'Sun': 'Sunday', 'Mon': 'Monday', 'Tue': 'Tuesday', 'Wed': 'Wednesday', 
@@ -322,8 +327,14 @@ Respond with JSON matching the schema exactly. Use short, recognizable meal name
       const dayData = result[d] || result[fullDay] || result[d.toLowerCase()] || result[fullDay?.toLowerCase()];
       if (dayData) {
         state.plan[d] = dayData;
+        foundAny = true;
       }
     });
+    
+    if (!foundAny) {
+      console.warn('Could not find day keys in AI response:', result);
+      throw new Error('AI response was formatted unexpectedly. Try again?');
+    }
     
     save();
     renderPlan();
