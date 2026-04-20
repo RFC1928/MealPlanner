@@ -72,7 +72,7 @@ const MEIJER_SECTIONS = [
 
 const DEFAULT_GOTOS = [
   'Steak + potatoes + squash or green beans',
-  'Emily’s Big Balls (meatballs) + mashed potatoes + veggies',
+  'Homemade Meatballs + mashed potatoes + veggies',
   'Spaghetti & meatballs',
   'Beef/turkey enchiladas',
   'Chicken Caesar wraps',
@@ -92,7 +92,7 @@ const DEFAULT_GOTOS = [
   'Tofu stir fry with rice (broccoli, egg, carrots)',
   'Stir‑fry noodles with veggies',
   'Loaded sweet potatoes (black beans, corn, avocado, cheese)',
-  'Martha Stewart Indian stew',
+  'Indian Vegetable Stew',
   'Pad Thai',
   'Breakfast for dinner (sweet + savory options)',
   'Kids: pizza • Adults: salad + chicken',
