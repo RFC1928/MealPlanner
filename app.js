@@ -346,7 +346,8 @@ User preferences:
 ${ctx}
 ${customInstruction ? `Additional instruction: ${customInstruction}` : ''}
 
-Respond with JSON matching the schema exactly. Use short, recognizable meal names (max 5 words).`;
+Respond with JSON matching the schema exactly. Use short, recognizable meal names (max 5 words). 
+IMPORTANT: Only include the 'dinner' key for each day. Do NOT include breakfast or lunch.
 
   const schema = {
     type: 'object',
@@ -365,11 +366,16 @@ Respond with JSON matching the schema exactly. Use short, recognizable meal name
     let result = await callAI(prompt, schema);
     console.log('AI Raw Result:', result);
     
-    // If AI wrapped it in { plan: { ... } } or { meals: { ... } }
-    if (result.plan && typeof result.plan === 'object') result = result.plan;
-    else if (result.meals && typeof result.meals === 'object') result = result.meals;
+    // AI often wraps the object in a named key even when told not to
+    const wrappers = ['plan', 'meals', 'mealPlan', 'meal_plan', 'weekly_plan'];
+    for (const w of wrappers) {
+      if (result[w] && typeof result[w] === 'object') {
+        result = result[w];
+        break;
+      }
+    }
     
-    // Support both 'Sun' and 'Sunday' styles
+    // Support Sun, Sunday, Monday, etc.
     let foundAny = false;
     DAYS.forEach(d => {
       const fullDay = {
@@ -377,9 +383,17 @@ Respond with JSON matching the schema exactly. Use short, recognizable meal name
         'Thu': 'Thursday', 'Fri': 'Friday', 'Sat': 'Saturday'
       }[d];
       
-      const dayData = result[d] || result[fullDay] || result[d.toLowerCase()] || result[fullDay?.toLowerCase()];
-      if (dayData) {
-        state.plan[d] = dayData;
+      // Try every possible key variation the AI might use
+      const dayData = result[d] || result[fullDay] || 
+                      result[d.toLowerCase()] || result[fullDay?.toLowerCase()] ||
+                      result[d.toUpperCase()] || result[fullDay?.toUpperCase()];
+
+      if (dayData && typeof dayData === 'object' && dayData.dinner) {
+        state.plan[d] = { dinner: dayData.dinner };
+        foundAny = true;
+      } else if (typeof dayData === 'string') {
+        // AI sometimes just gives a string instead of { dinner: "..." }
+        state.plan[d] = { dinner: dayData };
         foundAny = true;
       }
     });
